@@ -1,63 +1,90 @@
-/*
+/*!
  * Mailcheck https://github.com/mailcheck/mailcheck
- * Author
- * Derrick Ko (@derrickko)
+ * Author Derrick Ko (@derrickko)
  *
  * Released under the MIT License.
  *
- * v 1.1.1
+ * v 1.2.0
  */
+/*
+API
+
+ domains array (even if single-membered) of domains to be used instead
+   of this.defaultDomains
+ secondLevelDomains array (even if single-membered) of domains to be used instead
+   of this.defaultSecondLevelDomains
+ topLevelDomains array (even if single-membered) of domains to be used instead
+   of this.defaultTopLevelDomains
+
+Calculate similarity between 2 [sub]domain-names
+ optional function distanceFunction(provideddomain,candidatedomain)
+ returns value, smaller = better match between the arguments
+
+Provide a suggested alternative address
+ optional function suggested(suggestedaddress)
+ returns nothing
+
+Report that no address was found
+ optional function empty()
+ returns nothing
+
+CHANGES
+
+v.1.2.0
+separate option for countryDomains
+extra defaultDomains (including former defaultSecondLevelDomains) and defaultTopLevelDomains
+better-targeted uses of empty()
+deprecate suggest()
+add check(target,opts)
+cleanups from lint and other
+*/
 
 var Mailcheck = {
   domainThreshold: 2,
   secondLevelThreshold: 2,
   topLevelThreshold: 2,
+  defaultDomains: ['aim.com','aol.com','att.net','bellsouth.net','btinternet.com',
+    'charter.net','comcast.net','cox.net','earthlink.net','gmail.com','gmx.com',
+    'hotmail.com','icloud.com','inbox.com','live.com','mac.com','mail.com','me.com',
+    'msn.com','optonline.net','optusnet.com.au','outlook.com','qq.com','rocketmail.com',
+    'rogers.com','sbcglobal.net','shaw.ca','sky.com','sympatico.ca','telus.net',
+    'verizon.net','web.de','xtra.co.nz','yahoo.com','yandex.com','ymail.com','zoho.com'],
+  defaultSecondLevelDomains: [],
+  defaultTopLevelDomains: ['biz','co','com','edu','gov','info','mil','name','net','org'],
+  defaultCountryDomains: ['at','au','be','ca','ch','cz','de','dk','es','eu',
+    'fr','gr','hk','hu','ie','il','in','it','jp','kr','nl','no','nz','ru',
+    'se','sg','tw','uk','us'],
 
-  defaultDomains: ['msn.com', 'bellsouth.net',
-    'telus.net', 'comcast.net', 'optusnet.com.au',
-    'earthlink.net', 'qq.com', 'sky.com', 'icloud.com',
-    'mac.com', 'sympatico.ca', 'googlemail.com',
-    'att.net', 'xtra.co.nz', 'web.de',
-    'cox.net', 'gmail.com', 'ymail.com',
-    'aim.com', 'rogers.com', 'verizon.net',
-    'rocketmail.com', 'google.com', 'optonline.net',
-    'sbcglobal.net', 'aol.com', 'me.com', 'btinternet.com',
-    'charter.net', 'shaw.ca'],
-
-  defaultSecondLevelDomains: ["yahoo", "hotmail", "mail", "live", "outlook", "gmx"],
-
-  defaultTopLevelDomains: ["com", "com.au", "com.tw", "ca", "co.nz", "co.uk", "de",
-    "fr", "it", "ru", "net", "org", "edu", "gov", "jp", "nl", "kr", "se", "eu",
-    "ie", "co.il", "us", "at", "be", "dk", "hk", "es", "gr", "ch", "no", "cz",
-    "in", "net", "net.au", "info", "biz", "mil", "co.jp", "sg", "hu"],
-
+ /* run() returns
+  * a suggestion, if the supplied email approximates one that's acceptable,
+  *   and the user has accepted the suggestion
+  * true if the supplied email is empty
+  * false (hence do nothing) if the supplied email is acceptable as-is,
+  *   or is not recognised as 'close', or is not a valid address
+  */
   run: function(opts) {
-    opts.domains = opts.domains || Mailcheck.defaultDomains;
-    opts.secondLevelDomains = opts.secondLevelDomains || Mailcheck.defaultSecondLevelDomains;
-    opts.topLevelDomains = opts.topLevelDomains || Mailcheck.defaultTopLevelDomains;
-    opts.distanceFunction = opts.distanceFunction || Mailcheck.sift3Distance;
-
-    var defaultCallback = function(result){ return result };
-    var suggestedCallback = opts.suggested || defaultCallback;
-    var emptyCallback = opts.empty || defaultCallback;
-
-    var result = Mailcheck.suggest(Mailcheck.encodeEmail(opts.email), opts.domains, opts.secondLevelDomains, opts.topLevelDomains, opts.distanceFunction);
-
-    return result ? suggestedCallback(result) : emptyCallback()
-  },
-
-  suggest: function(email, domains, secondLevelDomains, topLevelDomains, distanceFunction) {
-    email = email.toLowerCase();
-
-    var emailParts = this.splitEmail(email);
-
+    var email = this.encodeEmail(opts.email),
+        emailParts = this.splitEmail(email);
+    if (emailParts === false) {
+      return false;
+    }
+    var secondLevelDomains = opts.secondLevelDomains || this.defaultSecondLevelDomains;
+    var topLevelDomains = opts.topLevelDomains || this.defaultTopLevelDomains;
+    var countryDomains = opts.countryDomains || this.defaultCountryDomains;
+    
+    // If the address has a valid 2nd-level + top-level, do not suggest anything
     if (secondLevelDomains && topLevelDomains) {
-        // If the email is a valid 2nd-level + top-level, do not suggest anything.
-        if (secondLevelDomains.indexOf(emailParts.secondLevelDomain) !== -1 && topLevelDomains.indexOf(emailParts.topLevelDomain) !== -1) {
+      if (secondLevelDomains.indexOf(emailParts.secondLevelDomain) !== -1) {
+        if (topLevelDomains.indexOf(emailParts.topLevelDomain) !== -1) {
+          if (emailParts.countryDomain === false || countryDomains.indexOf(emailParts.countryDomain) !== -1) {
             return false;
+          }
         }
+      }
     }
 
+    var domains = opts.domains || this.defaultDomains;
+    var distanceFunction = opts.distanceFunction || this.sift3Distance;
     var closestDomain = this.findClosestDomain(emailParts.domain, domains, distanceFunction, this.domainThreshold);
 
     if (closestDomain) {
@@ -69,48 +96,54 @@ var Mailcheck = {
         return { address: emailParts.address, domain: closestDomain, full: emailParts.address + "@" + closestDomain };
       }
     }
-
     // The email address does not closely match one of the supplied domains
-    var closestSecondLevelDomain = this.findClosestDomain(emailParts.secondLevelDomain, secondLevelDomains, distanceFunction, this.secondLevelThreshold);
-    var closestTopLevelDomain    = this.findClosestDomain(emailParts.topLevelDomain, topLevelDomains, distanceFunction, this.topLevelThreshold);
-
     if (emailParts.domain) {
-      var closestDomain = emailParts.domain;
+      closestDomain = emailParts.domain;
       var rtrn = false;
 
-      if(closestSecondLevelDomain && closestSecondLevelDomain != emailParts.secondLevelDomain) {
+      var closestSecondLevelDomain = this.findClosestDomain(emailParts.secondLevelDomain, secondLevelDomains, distanceFunction, this.secondLevelThreshold);
+      if (closestSecondLevelDomain && closestSecondLevelDomain != emailParts.secondLevelDomain) {
         // The email address may have a mispelled second-level domain; return a suggestion
         closestDomain = closestDomain.replace(emailParts.secondLevelDomain, closestSecondLevelDomain);
         rtrn = true;
       }
 
-      if(closestTopLevelDomain && closestTopLevelDomain != emailParts.topLevelDomain) {
+      var closestTopLevelDomain = this.findClosestDomain(emailParts.topLevelDomain, topLevelDomains, distanceFunction, this.topLevelThreshold);
+      if (closestTopLevelDomain && closestTopLevelDomain != emailParts.topLevelDomain) {
         // The email address may have a mispelled top-level domain; return a suggestion
         closestDomain = closestDomain.replace(emailParts.topLevelDomain, closestTopLevelDomain);
         rtrn = true;
       }
 
-      if (rtrn == true) {
+      if (emailParts.countryDomain) {
+        var closestCountryDomain = this.findClosestDomain(emailParts.countryDomain, countryDomains, distanceFunction, 1);
+        if (closestCountryDomain && closestCountryDomain != emailParts.countryDomain) {
+          // The email address may have a mispelled country domain; return a suggestion
+          closestDomain = closestDomain.replace(emailParts.countryDomain, closestCountryDomain);
+          rtrn = true;
+        }
+      }
+
+      if (rtrn) {
         return { address: emailParts.address, domain: closestDomain, full: emailParts.address + "@" + closestDomain };
       }
     }
-
-    /* The email address exactly matches one of the supplied domains, does not closely
-     * match any domain and does not appear to simply have a mispelled top-level domain,
-     * or is an invalid email address; do not return a suggestion.
-     */
     return false;
   },
 
-  findClosestDomain: function(domain, domains, distanceFunction, threshold) {
-    threshold = threshold || this.topLevelThreshold;
-    var dist;
-    var minDist = 99;
-    var closestDomain = null;
+  //deprecated, does nothing
+  suggest: function(){},
 
+  findClosestDomain: function(domain, domains, distanceFunction, threshold) {
     if (!domain || !domains) {
       return false;
     }
+
+    threshold = threshold || this.topLevelThreshold;
+    var dist,
+      minDist = 99,
+      closestDomain = null;
+
     if(!distanceFunction) {
       distanceFunction = this.sift3Distance;
     }
@@ -135,15 +168,15 @@ var Mailcheck = {
 
   sift3Distance: function(s1, s2) {
     // sift3: http://siderite.blogspot.com/2007/04/super-fast-and-accurate-string-distance.html
-    if (s1 == null || s1.length === 0) {
-      if (s2 == null || s2.length === 0) {
+    if (s1 === null || s1.length === 0) {
+      if (s2 === null || s2.length === 0) {
         return 0;
       } else {
         return s2.length;
       }
     }
 
-    if (s2 == null || s2.length === 0) {
+    if (s2 === null || s2.length === 0) {
       return s1.length;
     }
 
@@ -172,11 +205,11 @@ var Mailcheck = {
       }
       c++;
     }
-    return (s1.length + s2.length) /2 - lcs;
+    return (s1.length + s2.length)/2 - lcs;
   },
 
   splitEmail: function(email) {
-    var parts = email.trim().split('@');
+    var parts = email.trim().split('@'); //BUT not all browsers can trim()!
 
     if (parts.length < 2) {
       return false;
@@ -188,50 +221,77 @@ var Mailcheck = {
       }
     }
 
-    var domain = parts.pop();
-    var domainParts = domain.split('.');
-    var sld = '';
-    var tld = '';
-
-    if (domainParts.length == 0) {
+    var domain = parts.pop(),
+        domainParts = domain.split('.'),
+        dpl = domainParts.length;
+    if (dpl == 0) {
       // The address does not have a top-level domain
       return false;
-    } else if (domainParts.length == 1) {
-      // The address has only a top-level domain (valid under RFC)
-      tld = domainParts[0];
     } else {
-      // The address has a domain and a top-level domain
-      sld = domainParts[0];
-      for (var i = 1; i < domainParts.length; i++) {
-        tld += domainParts[i] + '.';
+       var cd = false,
+           tld = false,
+           sld = false;
+      if (dpl == 1) {
+        // The address has only a top-level domain (valid under RFC)
+        tld = domain;
+      } else {
+        // The address has a domain and/or a top-level domain and/or a country domain
+        sld = domainParts.shift();
+        if (dpl > 2) {
+          cd = domainParts.pop();
+        }
+        tld = domainParts.join('.');
       }
-      tld = tld.substring(0, tld.length - 1);
     }
 
     return {
+      countryDomain: cd,
       topLevelDomain: tld,
       secondLevelDomain: sld,
       domain: domain,
       address: parts.join('@')
-    }
+    };
   },
 
-  // Encode the email address to prevent XSS but leave in valid
-  // characters, following this official spec:
+  // Encode the email address to prevent XSS but leave in valid characters,
+  // following this [un]official spec:
   // http://en.wikipedia.org/wiki/Email_address#Syntax
   encodeEmail: function(email) {
-    var result = encodeURI(email);
-    result = result.replace('%20', ' ').replace('%25', '%').replace('%5E', '^')
-                   .replace('%60', '`').replace('%7B', '{').replace('%7C', '|')
-                   .replace('%7D', '}');
+    var charmap = {
+     _20:' ',
+     _25:'%',
+     _5E:'^',
+     _60:'`',
+     _7B:'{',
+     _7C:'|',
+     _7D:'}'
+    },
+    coded = encodeURI(email),
+    result = coded.replace(/%(20|25|5E|60|7B|7C|7D)/g,function(){
+      return charmap['_'+arguments[1]];
+    });
     return result;
+  },
+
+  check: function(target,opts) {
+    opts.email = target.value;
+    var result = this.run(opts);
+    if (result) {
+      if (opts.suggested) {
+        opts.suggested.call(this,target,result);
+      }
+    } else if (opts.empty) {
+      if (opts.email.trim() === '') { //BUT not all browsers can trim()
+        opts.empty.call(this,target);
+      }
+    }
   }
 };
 
 // Export the mailcheck object if we're in a CommonJS env (e.g. Node).
 // Modeled off of Underscore.js.
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Mailcheck;
+  module.exports = Mailcheck;
 }
 
 // Support AMD style definitions
@@ -245,23 +305,8 @@ if (typeof define === "function" && define.amd) {
 if (typeof window !== 'undefined' && window.jQuery) {
   (function($){
     $.fn.mailcheck = function(opts) {
-      var self = this;
-      if (opts.suggested) {
-        var oldSuggested = opts.suggested;
-        opts.suggested = function(result) {
-          oldSuggested(self, result);
-        };
-      }
-
-      if (opts.empty) {
-        var oldEmpty = opts.empty;
-        opts.empty = function() {
-          oldEmpty.call(null, self);
-        };
-      }
-
-      opts.email = this.val();
-      Mailcheck.run(opts);
-    }
+      Mailcheck.check(this[0],opts);
+      return this;
+    };
   })(jQuery);
 }
