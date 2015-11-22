@@ -72,13 +72,11 @@ var Mailcheck = {
     var topLevelDomains = opts.topLevelDomains || this.defaultTopLevelDomains;
     var countryDomains = opts.countryDomains || this.defaultCountryDomains;
     
-    // If the address has a valid 2nd-level + top-level, do not suggest anything
-    if (secondLevelDomains && topLevelDomains) {
-      if (secondLevelDomains.indexOf(emailParts.secondLevelDomain) !== -1) {
-        if (topLevelDomains.indexOf(emailParts.topLevelDomain) !== -1) {
-          if (emailParts.countryDomain === false || countryDomains.indexOf(emailParts.countryDomain) !== -1) {
-            return false;
-          }
+    // If the address is (sufficiently) recognised, do not suggest anything
+    if (topLevelDomains && topLevelDomains.indexOf(emailParts.topLevelDomain) !== -1) {
+      if (emailParts.countryDomain === false || (countryDomains && countryDomains.indexOf(emailParts.countryDomain) !== -1)) {
+        if (emailParts.secondLevelDomain === false || (secondLevelDomains && secondLevelDomains.indexOf(emailParts.secondLevelDomain) !== -1)) {
+          return false;
         }
       }
     }
