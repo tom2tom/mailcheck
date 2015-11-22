@@ -63,6 +63,9 @@ var Mailcheck = {
   *   or is not recognised as 'close', or is not a valid address
   */
   run: function(opts) {
+    if (typeof me.trim === "function") {
+      opts.email = opts.email.trim();
+    }
     var email = this.encodeEmail(opts.email),
         emailParts = this.splitEmail(email);
     if (emailParts === false) {
@@ -207,7 +210,7 @@ var Mailcheck = {
   },
 
   splitEmail: function(email) {
-    var parts = email.trim().split('@'); //BUT not all browsers can trim()!
+    var parts = email.split('@');
 
     if (parts.length < 2) {
       return false;
@@ -278,8 +281,8 @@ var Mailcheck = {
       if (opts.suggested) {
         opts.suggested.call(this,target,result);
       }
-    } else if (opts.empty) {
-      if (opts.email.trim() === '') { //BUT not all browsers can trim()
+    } else if (opts.email === '') {
+      if (opts.empty) {
         opts.empty.call(this,target);
       }
     }
