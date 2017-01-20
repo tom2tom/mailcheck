@@ -78,8 +78,10 @@ var Mailcheck = {
   *   or is not recognised as 'close', or is not a valid address
   */
   run: function(opts) {
-    if (typeof me.trim === "function") {
+    if (typeof String.prototype.trim === "function") {
       opts.email = opts.email.trim();
+    } else {
+      opts.email = opts.email.replace(/^\s+|\s+$/gm,'');
     }
     var email = this.encodeEmail(opts.email),
         emailParts = this.splitEmail(email);
